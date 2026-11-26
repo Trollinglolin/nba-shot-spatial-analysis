@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NBA Shot Quality</title>
+<meta name="description" content="Expected FG% (xFG%) from 2.5M NBA shots: who makes more than their shot locations predict.">
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#16181b;--mute:#62666c;--line:#dddbd4;--accent:#c4561d;--pos:#c4561d;--neg:#2f6fae}
+@media (prefers-color-scheme:dark){:root{--bg:#121315;--card:#1b1c1f;--ink:#ebeae6;--mute:#999ca1;--line:#2d2f33;--accent:#ec8a52;--pos:#ec8a52;--neg:#6aa3e6}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-variant-numeric:tabular-nums}
+.wrap{max-width:1000px;margin:0 auto;padding:0 20px}
+header{padding:48px 0 28px;border-bottom:1px solid var(--line)}
+.kicker{font-size:13px;color:var(--mute);margin:0 0 6px}
+h1{font-size:clamp(28px,5vw,40px);line-height:1.1;margin:0 0 12px;letter-spacing:-.01em}
+.lede{max-width:680px;color:var(--mute);margin:0}
+header a,section a{color:var(--accent)}
+section{padding:36px 0;border-bottom:1px solid var(--line)}
+h2{font-size:20px;margin:0 0 6px}
+.sub{color:var(--mute);margin:0 0 20px;font-size:15px;max-width:700px}
+input{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:9px 12px;width:min(420px,100%)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:18px 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.stat b{display:block;font-size:22px}
+.stat span{font-size:12px;color:var(--mute)}
+.stat b span{font-size:inherit}
+.pos,.stat b .pos{color:var(--pos)}.neg,.stat b .neg{color:var(--neg)}
+.chart{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:8px}
+.chart iframe{display:block;border:0;width:660px;height:620px;margin:0 auto}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px}
+h3{font-size:15px;margin:0 0 8px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:13px;font-weight:600;color:var(--mute)}
+.num{text-align:right}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--card)}
+.zbar{display:inline-block;height:8px;background:var(--accent);border-radius:2px;vertical-align:middle;opacity:.75}
+.note{font-size:14px;color:var(--mute);margin-top:12px;max-width:720px}
+.muted{color:var(--mute)}
+footer{padding:28px 0 48px;color:var(--mute);font-size:14px}
+footer a{color:inherit}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <p class="kicker">NBA analytics · spatial logistic regression on 2.5M shots</p>
+  <h1>Shot Quality &amp; Shot Making</h1>
+  <p class="lede">xFG% is the chance an average NBA shooter makes a given shot, from where it's taken and how (dunk, layup, pull-up, step-back). Subtract it from a player's real FG% and you separate good shot selection from good shooting. The model is trained on 2014-15 to 2022-23 and evaluated on the three seasons after. <a href="https://github.com/Trollinglolin/nba-shot-spatial-analysis">Code on GitHub</a></p>
+</header>
+
+<section>
+  <h2>Player shot charts</h2>
+  <p class="sub">Orange cells: the player shoots better than the league from that spot. Blue: worse. Dotted lines join spots with the same league xFG%. Charts exist for the 150 highest-volume shooters; everyone else gets numbers only.</p>
+  <input id="q" list="names" placeholder="Search a player" autocomplete="off">
+  <datalist id="names"></datalist>
+  <div id="card"></div>
+</section>
+
+<section>
+  <h2>Best and worst shot makers</h2>
+  <p class="sub">FG% minus xFG% over 2023-24 to 2025-26, shrunk toward zero by sample size so a hot streak doesn't top the list. Minimum 300 attempts. Click a row to load the player.</p>
+  <div class="cols">
+    <div><h3>Most above expected</h3><div class="scroll"><table id="top"></table></div></div>
+    <div><h3>Most below expected</h3><div class="scroll"><table id="bot"></table></div></div>
+  </div>
+</section>
+
+<section>
+  <h2>Where shots come from</h2>
+  <p class="sub">League-wide, test seasons. 58% of attempts are either at the rim or above-the-break threes.</p>
+  <div class="scroll"><table id="zones"></table></div>
+  <p class="note">On unseen seasons the model reaches ROC-AUC 0.64 and a Brier score of 0.228, against 0.249 for always guessing the average. Gradient boosting on the same features adds only about 0.01 AUC, so without defender or shot-clock data a linear model is close to the ceiling. <a href="charts/dashboard.html">Open the player-vs-league dashboard</a>.</p>
+</section>
+
+<footer>Data: NBA Stats <code>ShotChartDetail</code> via nba_api, regular seasons 2014-15 to 2025-26, end-of-quarter heaves over 40 ft removed. Method and limitations in the <a href="https://github.com/Trollinglolin/nba-shot-spatial-analysis#readme">README</a>.</footer>
+</div>
+
+<script src="data.js"></script>
+<script>
+const D = window.SHOTS, $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pct = x => (x * 100).toFixed(1) + '%';
+const pts = x => `<span class="${x >= 0 ? 'pos' : 'neg'}">${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}</span>`;
+const byName = {}; D.players.forEach(p => byName[p.name] = p);
+const withPage = D.players.filter(p => p.page);
+$('names').innerHTML = D.players.map(p => p.name).sort().map(n => `<option value="${esc(n)}">`).join('');
+
+function show(name) {
+  const p = byName[name];
+  if (!p) return;
+  $('q').value = name;
+  $('card').innerHTML = `<div class="stats">
+    <div class="stat"><b>${p.fga.toLocaleString()}</b><span>attempts</span></div>
+    <div class="stat"><b>${pct(p.fg)}</b><span>FG%</span></div>
+    <div class="stat"><b>${pct(p.xfg)}</b><span>xFG% (shot quality)</span></div>
+    <div class="stat"><b>${pts(p.diff)}</b><span>FG% over expected</span></div>
+    <div class="stat"><b>${pct(p.three)}</b><span>of shots are 3s</span></div>
+    <div class="stat"><b>${pct(p.rim)}</b><span>at the rim</span></div>
+    <div class="stat"><b>${p.dist} ft</b><span>avg distance</span></div>
+  </div>${p.page ? `<div class="chart"><iframe title="Shot chart for ${esc(p.name)}" src="charts/players/${p.page}.html" loading="lazy"></iframe></div>`
+    : '<p class="muted">No chart page for this player (outside the top 150 by volume).</p>'}`;
+}
+$('q').addEventListener('input', e => { if (byName[e.target.value.trim()]) show(e.target.value.trim()); });
+
+const sorted = D.players.slice().sort((a, b) => b.diff - a.diff);
+const tbl = list => `<thead><tr><th>Player</th><th class="num">FGA</th><th class="num">FG%</th><th class="num">xFG%</th><th class="num">+/-</th></tr></thead><tbody>${
+  list.map(p => `<tr class="click" data-n="${esc(p.name)}"><td>${esc(p.name)}</td><td class="num">${p.fga.toLocaleString()}</td><td class="num">${pct(p.fg)}</td><td class="num">${pct(p.xfg)}</td><td class="num">${pts(p.diff)}</td></tr>`).join('')}</tbody>`;
+$('top').innerHTML = tbl(sorted.slice(0, 10));
+$('bot').innerHTML = tbl(sorted.slice(-10).reverse());
+document.querySelectorAll('#top,#bot').forEach(t => t.onclick = e => {
+  const tr = e.target.closest('tr[data-n]');
+  if (tr) { show(tr.dataset.n); $('q').scrollIntoView({behavior: 'smooth', block: 'start'}); }
+});
+
+const maxF = Math.max(...D.zones.map(z => z.freq));
+$('zones').innerHTML = `<thead><tr><th>Zone</th><th class="num">FGA</th><th>Share</th><th class="num">FG%</th><th class="num">xFG%</th></tr></thead><tbody>${
+  D.zones.map(z => `<tr><td>${esc(z.zone)}</td><td class="num">${z.fga.toLocaleString()}</td><td><span class="zbar" style="width:${Math.round(z.freq / maxF * 120)}px"></span> <span class="muted">${pct(z.freq)}</span></td><td class="num">${pct(z.fg)}</td><td class="num">${pct(z.xfg)}</td></tr>`).join('')}</tbody>`;
+
+show('Stephen Curry');
+</script>
+</body>
+</html>
